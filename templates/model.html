@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}{{ model.display_name }} — Stock Dashboard{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">总览</a></li>
+    <li class="breadcrumb-item active">{{ model.display_name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex align-items-center mb-3">
+  <span class="cb-light cb-{{ cb.status if cb else 'normal' }}"></span>
+  <h4 class="mb-0 me-3">{{ model.display_name }}</h4>
+  {% if cb %}
+    <span class="badge bg-{% if cb.status == 'normal' %}success{% elif cb.status == 'observe' %}warning text-dark{% else %}danger{% endif %}">
+      {{ cb.status }} | 胜率 {{ "%.1f"|format(cb.win_rate * 100) }}% ({{ cb.sample_size }}笔)
+    </span>
+  {% endif %}
+</div>
+
+<!-- ========== 净值曲线 ========== -->
+{% if nav_data %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-graph-up me-1"></i>净值曲线</div>
+  <div class="card-body p-2">
+    <div id="navChart" style="width:100%;height:300px;"></div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ========== 月度收益 ========== -->
+{% if monthly_data %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-calendar3 me-1"></i>月度收益</div>
+  <div class="card-body p-2">
+    <div id="monthlyChart" style="width:100%;height:220px;"></div>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+<!-- ========== 最新预测 ========== -->
+<div class="col-lg-6">
+<div class="card mb-3 h-100">
+  <div class="card-header"><i class="bi bi-lightbulb me-1"></i>最新预测 ({{ signals|length }})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr><th>#</th><th>代码</th><th>收盘价</th><th>pred</th><th>最新价</th><th>涨跌</th></tr>
+      </thead>
+      <tbody>
+      {% for s in signals %}
+        {% set q = quotes.get(s.code, {}) %}
+        <tr>
+          <td>{{ s.rank }}</td>
+          <td><strong>{{ s.code }}</strong></td>
+          <td>{{ "%.2f"|format(s.close) if s.close else '—' }}</td>
+          <td>{{ "%.3f"|format(s.pred) if s.pred else '—' }}</td>
+          <td>{{ "%.2f"|format(q.price) if q.get('price') else '—' }}</td>
+          <td>
+            {% if q.get('change_pct') is not none %}
+              <span class="{{ 'pnl-positive' if q.change_pct > 0 else ('pnl-negative' if q.change_pct < 0 else 'pnl-zero') }}">
+                {{ "%+.2f"|format(q.change_pct) }}%
+              </span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      {% if not signals %}
+        <tr><td colspan="6" class="text-center text-muted py-3">暂无预测数据</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- ========== 当前持仓 ========== -->
+<div class="col-lg-6">
+<div class="card mb-3 h-100">
+  <div class="card-header"><i class="bi bi-briefcase me-1"></i>当前持仓 ({{ portfolio|length }})</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr><th>代码</th><th>买入日</th><th>买入价</th><th>最新价</th><th>浮盈</th></tr>
+      </thead>
+      <tbody>
+      {% for t in portfolio %}
+        {% set q = quotes.get(t.code, {}) %}
+        {% set float_pnl = ((q.price / t.buy_price - 1) * 100) if q.get('price') and t.buy_price else none %}
+        <tr{% if t.is_virtual %} class="opacity-50"{% endif %}>
+          <td><strong>{{ t.code }}</strong>{% if t.is_virtual %} <span class="badge bg-secondary">虚拟</span>{% endif %}</td>
+          <td>{{ t.buy_date }}</td>
+          <td>{{ "%.2f"|format(t.buy_price) }}</td>
+          <td>{{ "%.2f"|format(q.price) if q.get('price') else '—' }}</td>
+          <td>
+            {% if float_pnl is not none %}
+              <span class="{{ 'pnl-positive' if float_pnl > 0 else ('pnl-negative' if float_pnl < 0 else 'pnl-zero') }}">
+                {{ "%+.2f"|format(float_pnl) }}%
+              </span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      {% if not portfolio %}
+        <tr><td colspan="5" class="text-center text-muted py-3">暂无持仓</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- ========== 滚动胜率 ========== -->
+{% if win_rate_data %}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-trophy me-1"></i>滚动胜率 (窗口={{ model.cb_trades or 15 }})</div>
+  <div class="card-body p-2">
+    <div id="winRateChart" style="width:100%;height:250px;"></div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% if nav_data %}
+(function(){
+  var data = {{ nav_data | tojson }};
+  var chart = echarts.init(document.getElementById('navChart'));
+  chart.setOption({
+    tooltip:{trigger:'axis',formatter:function(p){
+      var d=data[p[0].dataIndex];
+      return d.date+'<br>净值: <b>'+d.nav+'</b>'+(d.open_positions!=null?'<br>持仓: '+d.open_positions+'只':'');
+    }},
+    grid:{left:50,right:20,top:15,bottom:40},
+    xAxis:{type:'category',data:data.map(d=>d.date),axisLabel:{fontSize:11}},
+    yAxis:{type:'value',name:'净值',axisLabel:{fontSize:11},splitLine:{lineStyle:{type:'dashed'}}},
+    series:[{
+      type:'line',data:data.map(d=>d.nav),smooth:true,symbol:'none',
+      lineStyle:{width:2,color:'#0d6efd'},
+      areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,
+        colorStops:[{offset:0,color:'rgba(13,110,253,0.15)'},{offset:1,color:'rgba(13,110,253,0)'}]}},
+      markLine:{silent:true,symbol:'none',data:[
+        {yAxis:1,lineStyle:{color:'#999',type:'dashed'},label:{formatter:'基准',fontSize:11}}
+      ]}
+    }],
+    dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:2}]
+  });
+  window.addEventListener('resize',function(){chart.resize()});
+})();
+{% endif %}
+
+{% if monthly_data %}
+(function(){
+  var data = {{ monthly_data | tojson }};
+  var chart = echarts.init(document.getElementById('monthlyChart'));
+  chart.setOption({
+    tooltip:{trigger:'axis',formatter:function(p){
+      var d=data[p[0].dataIndex];
+      return d.month+'<br>收益: <b>'+(d.return_pct>0?'+':'')+d.return_pct+'%</b><br>'+d.count+'笔, 胜'+d.wins+'笔';
+    }},
+    grid:{left:50,right:20,top:10,bottom:25},
+    xAxis:{type:'category',data:data.map(d=>d.month),axisLabel:{fontSize:11}},
+    yAxis:{type:'value',name:'%',axisLabel:{fontSize:11},splitLine:{lineStyle:{type:'dashed'}}},
+    series:[{
+      type:'bar',data:data.map(d=>({value:d.return_pct,
+        itemStyle:{color:d.return_pct>=0?'#dc3545':'#28a745'}})),
+      markLine:{silent:true,symbol:'none',data:[{yAxis:0,lineStyle:{color:'#999'},label:{show:false}}]}
+    }]
+  });
+  window.addEventListener('resize',function(){chart.resize()});
+})();
+{% endif %}
+
+{% if win_rate_data %}
+(function(){
+  var data = {{ win_rate_data | tojson }};
+  var chart = echarts.init(document.getElementById('winRateChart'));
+  chart.setOption({
+    tooltip:{trigger:'axis',formatter:function(p){return p[0].name+'<br>胜率: '+p[0].value+'%'}},
+    grid:{left:50,right:20,top:15,bottom:25},
+    xAxis:{type:'category',data:data.map(d=>d.date),axisLabel:{fontSize:11,rotate:30}},
+    yAxis:{type:'value',name:'%',min:0,max:100,axisLabel:{fontSize:11}},
+    series:[{
+      type:'line',data:data.map(d=>d.win_rate),smooth:true,symbol:'none',
+      lineStyle:{width:2,color:'#0d6efd'},
+      areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,
+        colorStops:[{offset:0,color:'rgba(13,110,253,0.15)'},{offset:1,color:'rgba(13,110,253,0)'}]}},
+      markLine:{data:[
+        {yAxis:{{ model.cb_low or 20 }},lineStyle:{color:'#dc3545'},label:{formatter:'熔断',fontSize:11}},
+        {yAxis:{{ model.cb_high or 50 }},lineStyle:{color:'#28a745'},label:{formatter:'恢复',fontSize:11}}
+      ]}
+    }]
+  });
+  window.addEventListener('resize',function(){chart.resize()});
+})();
+{% endif %}
+</script>
+{% endblock %}

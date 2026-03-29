@@ -1,0 +1,57 @@
+/* ===== Global ===== */
+body {
+    background-color: #f5f6fa;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ===== Navbar ===== */
+.navbar { padding: .5rem 1rem; }
+.navbar-brand { font-size: 1.1rem; letter-spacing: .5px; }
+.nav-link { font-size: .9rem; padding: .4rem .8rem !important; border-radius: .375rem; margin: 0 .1rem; transition: background .15s; }
+.nav-link:hover { background: rgba(255,255,255,.1); }
+.nav-link.active { background: rgba(255,255,255,.15); font-weight: 600; }
+
+/* ===== Cards ===== */
+.card { border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); border-radius: .5rem; }
+.card-header { background: #fff; font-weight: 600; border-bottom: 1px solid #eee; }
+
+/* ===== Circuit Breaker Lights ===== */
+.cb-light {
+    display: inline-block; width: 12px; height: 12px;
+    border-radius: 50%; margin-right: 8px; vertical-align: middle;
+}
+.cb-normal        { background: #28a745; box-shadow: 0 0 8px rgba(40,167,69,.5); }
+.cb-observe       { background: #ffc107; box-shadow: 0 0 8px rgba(255,193,7,.5); }
+.cb-circuit_break { background: #dc3545; box-shadow: 0 0 8px rgba(220,53,69,.5); }
+
+/* ===== PnL ===== */
+.pnl-positive { color: #dc3545; font-weight: 600; }
+.pnl-negative { color: #28a745; font-weight: 600; }
+.pnl-zero     { color: #6c757d; }
+
+/* ===== Model cards ===== */
+.model-card { transition: transform .15s, box-shadow .15s; }
+.model-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.1); }
+
+/* ===== Stat numbers ===== */
+.stat-badge { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
+.stat-label { font-size: .8rem; color: #6c757d; margin-top: 2px; }
+
+/* ===== Sparkline ===== */
+.sparkline-container { width: 100%; height: 55px; }
+
+/* ===== Tables ===== */
+.table th { white-space: nowrap; font-weight: 600; font-size: .85rem; color: #555; }
+.table td { vertical-align: middle; font-size: .9rem; }
+
+/* ===== Filter bar ===== */
+.filter-bar .form-select, .filter-bar .form-control { max-width: 180px; }
+
+/* ===== Footer ===== */
+footer { font-size: .8rem; }
+
+/* ===== Task cards ===== */
+.border-4 { border-width: 4px !important; }
+
+/* ===== File size columns ===== */
+td code { font-size: .85em; }

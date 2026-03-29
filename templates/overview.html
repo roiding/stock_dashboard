@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block title %}总览 — Stock Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-columns-gap me-2"></i>模型总览</h4>
+  <button class="btn btn-sm btn-outline-secondary ms-3" data-bs-toggle="modal" data-bs-target="#modelMgmtModal">
+    <i class="bi bi-gear me-1"></i>管理模型
+  </button>
+</div>
+
+<div class="row g-3">
+{% for card in cards %}
+  <div class="col-md-6 col-xl-4">
+    <div class="card model-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-3">
+          <span class="cb-light cb-{{ card.cb_status }}"></span>
+          <h5 class="card-title mb-0 me-auto">
+            <a href="/model/{{ card.model.name }}" class="text-decoration-none text-dark">{{ card.model.display_name }}</a>
+          </h5>
+          <a href="/model/{{ card.model.name }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-arrow-right"></i></a>
+        </div>
+
+        <div class="row text-center mb-3">
+          <div class="col-4">
+            <div class="stat-badge text-primary">{{ card.signal_count }}</div>
+            <div class="stat-label">今日预测</div>
+          </div>
+          <div class="col-4">
+            <div class="stat-badge text-info">{{ card.portfolio_count }}</div>
+            <div class="stat-label">当前持仓</div>
+          </div>
+          <div class="col-4">
+            <div class="stat-badge">
+              {% if card.cb_win_rate is not none %}
+                {{ "%.1f"|format(card.cb_win_rate) }}%
+              {% else %}—{% endif %}
+            </div>
+            <div class="stat-label">近期胜率</div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-3 mb-2">
+          <small class="text-muted"><i class="bi bi-calendar3 me-1"></i>{{ card.model.hold_days }}天</small>
+          <small class="text-muted"><i class="bi bi-arrow-up-circle me-1"></i>{{ card.model.tp_pct }}%止盈</small>
+          <small class="text-muted"><i class="bi bi-stack me-1"></i>日选{{ card.model.daily_picks }}只</small>
+        </div>
+
+        {% if card.nav_data %}
+        <div class="sparkline-container" id="spark-{{ card.model.name }}"></div>
+        {% elif card.win_rate_data %}
+        <div class="sparkline-container" id="spark-{{ card.model.name }}"></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+{% if not cards %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-bar-chart-line" style="font-size:3rem"></i>
+  <p class="mt-2">暂无活跃模型，请先运行 <code>python init_db.py</code></p>
+</div>
+{% endif %}
+
+<!-- ========== 模型管理 Modal ========== -->
+<div class="modal fade" id="modelMgmtModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-gear me-2"></i>模型管理</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- 模型列表 -->
+        <div class="table-responsive mb-3">
+          <table class="table table-sm table-hover align-middle" id="modelTable">
+            <thead class="table-light">
+              <tr>
+                <th>模型ID</th><th>显示名称</th><th>持有天数</th><th>止盈%</th>
+                <th>日选数</th><th>启用</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="modelTableBody"></tbody>
+          </table>
+        </div>
+        <button class="btn btn-sm btn-primary" id="btnNewModel"><i class="bi bi-plus-lg me-1"></i>新增模型</button>
+
+        <!-- 编辑/新增表单 (默认隐藏) -->
+        <div id="modelFormWrap" class="border rounded p-3 mt-3" style="display:none">
+          <h6 id="modelFormTitle" class="mb-3">新增模型</h6>
+          <form id="modelForm">
+            <input type="hidden" id="mf_mode" value="create">
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label">模型ID</label>
+                <input type="text" class="form-control form-control-sm" id="mf_name" placeholder="唯一标识, 如 p0_30 (新建后不可改)" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">显示名称</label>
+                <input type="text" class="form-control form-control-sm" id="mf_display_name" placeholder="如 &quot;0-30元模型&quot;">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">持有天数</label>
+                <input type="number" class="form-control form-control-sm" id="mf_hold_days" placeholder="信号日起持有交易日数" value="5">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">止盈比例(%)</label>
+                <input type="number" step="0.1" class="form-control form-control-sm" id="mf_tp_pct" placeholder="如 10 表示 10%" value="10">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">每日选股数</label>
+                <input type="number" class="form-control form-control-sm" id="mf_daily_picks" placeholder="每天买入几只" value="3">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">预测阈值</label>
+                <input type="number" step="0.01" class="form-control form-control-sm" id="mf_pred_threshold" placeholder="pred 低于此值不买入" value="2.0">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">熔断窗口</label>
+                <input type="number" class="form-control form-control-sm" id="mf_cb_trades" placeholder="取最近N笔计算胜率" value="15">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">熔断线(%)</label>
+                <input type="number" step="0.1" class="form-control form-control-sm" id="mf_cb_low" placeholder="胜率低于此值触发熔断" value="20">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">恢复线(%)</label>
+                <input type="number" step="0.1" class="form-control form-control-sm" id="mf_cb_high" placeholder="胜率高于此值恢复正常" value="50">
+              </div>
+              <div class="col-md-4 d-flex align-items-end">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="mf_is_active" checked>
+                  <label class="form-check-label" for="mf_is_active">启用</label>
+                </div>
+              </div>
+            </div>
+            <div class="mt-3">
+              <button type="submit" class="btn btn-sm btn-success" id="btnSaveModel">保存</button>
+              <button type="button" class="btn btn-sm btn-secondary ms-2" id="btnCancelModel">取消</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ========== 模型管理 ========== */
+(function(){
+  var allModels = [];
+  var tbody = document.getElementById('modelTableBody');
+  var formWrap = document.getElementById('modelFormWrap');
+  var form = document.getElementById('modelForm');
+
+  function loadModels(){
+    fetch('/api/models').then(r=>r.json()).then(function(res){
+      allModels = res.data || [];
+      renderTable();
+    });
+  }
+
+  function renderTable(){
+    tbody.innerHTML = '';
+    allModels.forEach(function(m){
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><code>'+m.name+'</code></td>'+
+        '<td>'+( m.display_name||'')+'</td>'+
+        '<td>'+( m.hold_days||'')+'</td>'+
+        '<td>'+( m.tp_pct||'')+'</td>'+
+        '<td>'+( m.daily_picks||'')+'</td>'+
+        '<td>'+(m.is_active?'<span class="badge bg-success">ON</span>':'<span class="badge bg-secondary">OFF</span>')+'</td>'+
+        '<td>'+
+          '<button class="btn btn-sm btn-outline-primary me-1 btn-edit" data-name="'+m.name+'"><i class="bi bi-pencil"></i></button>'+
+          '<button class="btn btn-sm btn-outline-danger btn-del" data-name="'+m.name+'"><i class="bi bi-trash"></i></button>'+
+        '</td>';
+      tbody.appendChild(tr);
+    });
+    // bind edit / delete
+    tbody.querySelectorAll('.btn-edit').forEach(function(btn){
+      btn.addEventListener('click', function(){ openEdit(btn.dataset.name); });
+    });
+    tbody.querySelectorAll('.btn-del').forEach(function(btn){
+      btn.addEventListener('click', function(){ deleteModel(btn.dataset.name); });
+    });
+  }
+
+  function resetForm(){
+    form.reset();
+    document.getElementById('mf_mode').value = 'create';
+    document.getElementById('mf_name').disabled = false;
+    document.getElementById('modelFormTitle').textContent = '新增模型';
+    // restore defaults
+    document.getElementById('mf_hold_days').value = 5;
+    document.getElementById('mf_tp_pct').value = 10;
+    document.getElementById('mf_daily_picks').value = 3;
+    document.getElementById('mf_pred_threshold').value = 2.0;
+    document.getElementById('mf_cb_trades').value = 15;
+    document.getElementById('mf_cb_low').value = 20;
+    document.getElementById('mf_cb_high').value = 50;
+    document.getElementById('mf_is_active').checked = true;
+  }
+
+  function openEdit(name){
+    var m = allModels.find(function(x){return x.name===name;});
+    if(!m) return;
+    document.getElementById('mf_mode').value = 'edit';
+    document.getElementById('mf_name').value = m.name;
+    document.getElementById('mf_name').disabled = true;
+    document.getElementById('mf_display_name').value = m.display_name||'';
+    document.getElementById('mf_hold_days').value = m.hold_days||'';
+    document.getElementById('mf_tp_pct').value = m.tp_pct||'';
+    document.getElementById('mf_daily_picks').value = m.daily_picks||'';
+    document.getElementById('mf_pred_threshold').value = m.pred_threshold||'';
+    document.getElementById('mf_cb_trades').value = m.cb_trades||'';
+    document.getElementById('mf_cb_low').value = m.cb_low||'';
+    document.getElementById('mf_cb_high').value = m.cb_high||'';
+    document.getElementById('mf_is_active').checked = !!m.is_active;
+    document.getElementById('modelFormTitle').textContent = '编辑模型: '+m.name;
+    formWrap.style.display = 'block';
+  }
+
+  function collectForm(){
+    return {
+      name: document.getElementById('mf_name').value.trim(),
+      display_name: document.getElementById('mf_display_name').value.trim(),
+      hold_days: parseInt(document.getElementById('mf_hold_days').value)||5,
+      tp_pct: parseFloat(document.getElementById('mf_tp_pct').value)||10,
+      daily_picks: parseInt(document.getElementById('mf_daily_picks').value)||3,
+      pred_threshold: parseFloat(document.getElementById('mf_pred_threshold').value)||2.0,
+      cb_trades: parseInt(document.getElementById('mf_cb_trades').value)||15,
+      cb_low: parseFloat(document.getElementById('mf_cb_low').value)||20,
+      cb_high: parseFloat(document.getElementById('mf_cb_high').value)||50,
+      is_active: document.getElementById('mf_is_active').checked,
+    };
+  }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var mode = document.getElementById('mf_mode').value;
+    var data = collectForm();
+    var url, method;
+    if(mode==='edit'){
+      url = '/api/models/'+data.name;
+      method = 'PUT';
+    } else {
+      url = '/api/models';
+      method = 'POST';
+    }
+    fetch(url,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+      .then(r=>r.json()).then(function(res){
+        if(res.status==='ok'){ location.reload(); }
+        else { alert(res.message||'保存失败'); }
+      });
+  });
+
+  function deleteModel(name){
+    if(!confirm('确认删除模型 "'+name+'" 及其所有数据？此操作不可撤销。')) return;
+    fetch('/api/models/'+name,{method:'DELETE'})
+      .then(r=>r.json()).then(function(res){
+        if(res.status==='ok'){ location.reload(); }
+        else { alert(res.message||'删除失败'); }
+      });
+  }
+
+  document.getElementById('btnNewModel').addEventListener('click', function(){
+    resetForm();
+    formWrap.style.display = 'block';
+  });
+  document.getElementById('btnCancelModel').addEventListener('click', function(){
+    formWrap.style.display = 'none';
+  });
+
+  // load on modal open
+  document.getElementById('modelMgmtModal').addEventListener('show.bs.modal', function(){
+    loadModels();
+    formWrap.style.display = 'none';
+  });
+})();
+
+/* ========== Sparkline Charts ========== */
+{% for card in cards %}
+{% if card.nav_data or card.win_rate_data %}
+(function(){
+  var dom = document.getElementById('spark-{{ card.model.name }}');
+  if (!dom) return;
+  var chart = echarts.init(dom);
+  {% if card.nav_data %}
+  var data = {{ card.nav_data | tojson }};
+  var color = data.length && data[data.length-1].nav >= 1.0 ? '#dc3545' : '#28a745';
+  chart.setOption({
+    tooltip:{trigger:'axis',formatter:function(p){return p[0].name+'<br>净值: '+p[0].value}},
+    grid:{left:0,right:0,top:2,bottom:2},
+    xAxis:{type:'category',show:false,data:data.map(d=>d.date)},
+    yAxis:{type:'value',show:false},
+    series:[{type:'line',data:data.map(d=>d.nav),smooth:true,symbol:'none',
+      lineStyle:{width:2,color:color},
+      areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,
+        colorStops:[{offset:0,color:color.replace(')',',0.2)').replace('rgb','rgba')},{offset:1,color:'rgba(0,0,0,0)'}]}},
+      markLine:{silent:true,symbol:'none',data:[{yAxis:1,lineStyle:{color:'#aaa',type:'dashed',width:1},label:{show:false}}]}
+    }]
+  });
+  {% else %}
+  var data = {{ card.win_rate_data | tojson }};
+  chart.setOption({
+    grid:{left:0,right:0,top:2,bottom:2},
+    xAxis:{type:'category',show:false,data:data.map(d=>d.date)},
+    yAxis:{type:'value',show:false,min:function(v){return Math.max(0,v.min-5)},max:function(v){return Math.min(100,v.max+5)}},
+    series:[{type:'line',data:data.map(d=>d.win_rate),smooth:true,symbol:'none',
+      lineStyle:{width:2,color:'#0d6efd'},
+      areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,
+        colorStops:[{offset:0,color:'rgba(13,110,253,0.2)'},{offset:1,color:'rgba(13,110,253,0)'}]}}}]
+  });
+  {% endif %}
+  window.addEventListener('resize',function(){chart.resize()});
+})();
+{% endif %}
+{% endfor %}
+</script>
+{% endblock %}

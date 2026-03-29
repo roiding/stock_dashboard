@@ -1,0 +1,11 @@
+flask
+flask-sqlalchemy
+pymysql
+apscheduler
+mootdx
+python-dotenv
+# ---- 策略脚本依赖 ----
+numpy
+pandas
+lightgbm
+TA-Lib

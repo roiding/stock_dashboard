@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}定时任务 — Stock Dashboard{% endblock %}
+
+{% block content %}
+<!-- ===== 模型管理 ===== -->
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-cpu me-1"></i>模型管理</span>
+    <button class="btn btn-sm btn-outline-primary" onclick="showNewModel()"><i class="bi bi-plus-lg me-1"></i>添加</button>
+  </div>
+  <div class="card-body p-0">
+    <div id="newModelSection" class="p-2 bg-light border-bottom" style="display:none">
+      <div class="row g-2 align-items-end">
+        <div class="col-3"><input type="text" id="newModelName" class="form-control form-control-sm" placeholder="标识 (p0_30)"></div>
+        <div class="col-3"><input type="text" id="newModelDisplay" class="form-control form-control-sm" placeholder="显示名 (0-30日模型)"></div>
+        <div class="col-1"><input type="number" id="newModelHold" class="form-control form-control-sm" placeholder="持仓" value="10"></div>
+        <div class="col-1"><input type="number" id="newModelPicks" class="form-control form-control-sm" placeholder="每日" value="3"></div>
+        <div class="col-2"><input type="number" id="newModelTp" class="form-control form-control-sm" placeholder="止盈%" value="10" step="0.1"></div>
+        <div class="col-2"><button class="btn btn-sm btn-success w-100" onclick="addModel()">创建</button></div>
+      </div>
+      <small class="text-muted">标识 | 显示名 | 持仓天数 | 每日选股 | 止盈%</small>
+    </div>
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr><th>标识</th><th>显示名</th><th>持仓</th><th>每日选股</th><th>止盈</th><th>熔断(笔/低/高)</th><th></th></tr>
+      </thead>
+      <tbody id="modelTableBody">
+        <tr><td colspan="7" class="text-center text-muted py-2">加载中...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-clock-history me-2"></i>定时任务管理</h4>
+  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+    <i class="bi bi-plus-lg me-1"></i>新建任务
+  </button>
+</div>
+
+<!-- ===== 任务列表 ===== -->
+{% if task_list %}
+<div class="row g-3">
+  {% for item in task_list %}
+  {% set t = item.task %}
+  {% set log = item.last_log %}
+  <div class="col-md-6 col-xl-4">
+    <div class="card h-100 {{ 'border-start border-4 border-success' if t.is_enabled else 'border-start border-4 border-secondary opacity-75' }}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <h6 class="card-title mb-0">
+              <span class="badge bg-{{ 'primary' if t.task_type == 'predict' else 'warning text-dark' }} me-1">{{ t.task_type }}</span>
+              {{ t.model_name }}
+            </h6>
+            <small class="text-muted">{{ t.description or '—' }}</small>
+          </div>
+          <div class="dropdown">
+            <button class="btn btn-sm btn-light" data-bs-toggle="dropdown"><i class="bi bi-three-dots-vertical"></i></button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="#" onclick="editTask({{ t.id }}, '{{ t.model_name }}', '{{ t.task_type }}', '{{ t.cron_expr }}', '{{ t.script_path }}', '{{ t.description or '' }}')"><i class="bi bi-pencil me-2"></i>编辑</a></li>
+              <li><a class="dropdown-item" href="#" onclick="toggleTask({{ t.id }}, {{ 'false' if t.is_enabled else 'true' }})"><i class="bi bi-toggle-{{ 'on' if t.is_enabled else 'off' }} me-2"></i>{{ '禁用' if t.is_enabled else '启用' }}</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="#" onclick="deleteTask({{ t.id }})"><i class="bi bi-trash me-2"></i>删除</a></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <code class="bg-light px-2 py-1 rounded">{{ t.cron_expr }}</code>
+          {% if t.is_enabled %}
+            <span class="badge bg-success-subtle text-success ms-1">启用</span>
+          {% else %}
+            <span class="badge bg-secondary-subtle text-secondary ms-1">禁用</span>
+          {% endif %}
+        </div>
+
+        <div class="mb-3">
+          <small class="text-muted d-block text-truncate" title="{{ t.script_path }}">
+            <i class="bi bi-file-code me-1"></i>{{ t.script_path }}
+          </small>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            {% if log %}
+              <span class="badge {{ 'bg-success' if log.status == 'success' else ('bg-danger' if log.status == 'failed' else 'bg-primary') }}">
+                {{ log.status }}
+              </span>
+              <small class="text-muted ms-1">{{ log.started_at.strftime('%m-%d %H:%M') if log.started_at else '' }}</small>
+            {% else %}
+              <small class="text-muted">从未执行</small>
+            {% endif %}
+          </div>
+          <div>
+            <button class="btn btn-outline-primary btn-sm" onclick="triggerTask({{ t.id }})" title="手动运行">
+              <i class="bi bi-play-fill"></i>
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#logs-{{ t.id }}" title="查看日志">
+              <i class="bi bi-journal-text"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 执行日志 (折叠) -->
+      <div class="collapse" id="logs-{{ t.id }}">
+        <div class="card-footer bg-light p-2">
+          <div id="logContent-{{ t.id }}"><em class="text-muted small">加载中...</em></div>
+          <script>
+            document.getElementById('logs-{{ t.id }}').addEventListener('show.bs.collapse', function(){
+              fetch('/api/tasks/{{ t.id }}/logs?limit=5')
+                .then(r=>r.json()).then(d=>{
+                  if(d.status!=='ok') return;
+                  if(!d.data.length){ document.getElementById('logContent-{{ t.id }}').innerHTML='<small class="text-muted">暂无日志</small>'; return; }
+                  var html='<table class="table table-sm table-bordered mb-0 small"><thead><tr><th>时间</th><th>状态</th><th>耗时</th><th>输出</th></tr></thead><tbody>';
+                  d.data.forEach(function(l){
+                    var dur='—';
+                    if(l.finished_at && l.started_at){
+                      var ms=new Date(l.finished_at)-new Date(l.started_at);
+                      dur=(ms/1000).toFixed(1)+'s';
+                    }
+                    html+='<tr><td class="text-nowrap">'+l.started_at+'</td><td><span class="badge '+(l.status==='success'?'bg-success':l.status==='failed'?'bg-danger':'bg-primary')+'">'+l.status+'</span></td><td>'+dur+'</td><td style="max-width:200px" class="text-truncate">'+(l.error||l.output||'—')+'</td></tr>';
+                  });
+                  html+='</tbody></table>';
+                  document.getElementById('logContent-{{ t.id }}').innerHTML=html;
+                });
+            });
+          </script>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox" style="font-size:3rem"></i>
+  <p class="mt-2">暂无定时任务，点击上方「新建任务」开始配置</p>
+</div>
+{% endif %}
+
+<!-- ===== 新建 / 编辑 Modal ===== -->
+<div class="modal fade" id="addTaskModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="taskModalTitle">新建定时任务</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="taskEditId" value="">
+
+        <!-- 模型: 从 API 动态加载 -->
+        <div class="mb-3">
+          <label class="form-label">模型</label>
+          <select id="taskModel" class="form-select"><option value="">加载中...</option></select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">任务类型</label>
+          <select id="taskType" class="form-select">
+            <option value="predict">predict (预测)</option>
+            <option value="circuit_breaker">circuit_breaker (熔断检查)</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Cron 表达式</label>
+          <input type="text" id="taskCron" class="form-control font-monospace" placeholder="30 15 * * 1-5">
+          <div class="form-text">分 时 日 月 周 — 如 <code>30 15 * * 1-5</code> = 工作日15:30</div>
+        </div>
+
+        <!-- 脚本: 从已上传策略文件动态加载 -->
+        <div class="mb-3">
+          <label class="form-label">策略脚本</label>
+          <select id="taskScript" class="form-select font-monospace">
+            <option value="">加载中...</option>
+          </select>
+          <div class="form-text">列表来自「文件管理」已上传的策略脚本</div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">描述 <small class="text-muted">(可选)</small></label>
+          <input type="text" id="taskDesc" class="form-control" placeholder="简要说明">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" onclick="saveTask()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ---- 动态加载模型列表 & 策略文件列表 ----
+var _models = [], _scripts = [];
+
+function loadModels(){
+  return fetch('/api/models').then(r=>r.json()).then(d=>{
+    _models = d.data || [];
+    // 更新任务 Modal 下拉
+    var sel = document.getElementById('taskModel');
+    sel.innerHTML = '<option value="">-- 选择模型 --</option>';
+    _models.forEach(function(m){
+      sel.innerHTML += '<option value="'+m.name+'">'+m.display_name+' ('+m.name+')</option>';
+    });
+    // 更新模型管理表格
+    var tbody = document.getElementById('modelTableBody');
+    if(!_models.length){
+      tbody.innerHTML='<tr><td colspan="7" class="text-center text-muted py-2">暂无模型</td></tr>';
+      return;
+    }
+    tbody.innerHTML='';
+    _models.forEach(function(m){
+      tbody.innerHTML+='<tr>'
+        +'<td><code>'+m.name+'</code></td>'
+        +'<td>'+m.display_name+'</td>'
+        +'<td>'+(m.hold_days||'—')+'天</td>'
+        +'<td>'+(m.daily_picks||'—')+'只</td>'
+        +'<td>'+(m.tp_pct||'—')+'%</td>'
+        +'<td>'+(m.cb_trades||15)+' / '+(m.cb_low||20)+'% / '+(m.cb_high||50)+'%</td>'
+        +'<td><button class="btn btn-sm btn-outline-danger" onclick="deleteModel(\''+m.name+'\')"><i class="bi bi-trash"></i></button></td>'
+        +'</tr>';
+    });
+  });
+}
+function loadScripts(){
+  return fetch('/api/files').then(r=>r.json()).then(d=>{
+    _scripts = (d.data && d.data.strategies) || [];
+    var sel = document.getElementById('taskScript');
+    sel.innerHTML = '<option value="">-- 选择脚本 --</option>';
+    if(!_scripts.length){
+      sel.innerHTML += '<option value="" disabled>暂无策略文件, 请先到「文件管理」上传</option>';
+      return;
+    }
+    _scripts.forEach(function(f){
+      sel.innerHTML += '<option value="strategies/'+f.name+'">strategies/'+f.name+'</option>';
+    });
+  });
+}
+loadModels(); loadScripts();
+
+// ---- 模型管理 ----
+function showNewModel(){
+  var sec = document.getElementById('newModelSection');
+  sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
+}
+function addModel(){
+  var name = document.getElementById('newModelName').value.trim();
+  var display = document.getElementById('newModelDisplay').value.trim() || name;
+  if(!name){ alert('请填写模型标识'); return; }
+  fetch('/api/models',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      name: name, display_name: display,
+      hold_days: parseInt(document.getElementById('newModelHold').value)||10,
+      daily_picks: parseInt(document.getElementById('newModelPicks').value)||3,
+      tp_pct: parseFloat(document.getElementById('newModelTp').value)||10.0,
+    })})
+    .then(r=>r.json()).then(d=>{
+      if(d.status==='ok'){
+        loadModels();
+        document.getElementById('newModelSection').style.display='none';
+        document.getElementById('newModelName').value='';
+        document.getElementById('newModelDisplay').value='';
+      } else { alert('失败: '+d.message); }
+    });
+}
+function deleteModel(name){
+  if(!confirm('确认删除模型「'+name+'」?\n\n所有关联数据 (信号/交易/净值/熔断/任务) 将一并删除!')) return;
+  fetch('/api/models/'+name,{method:'DELETE'}).then(r=>r.json()).then(d=>{
+    if(d.status==='ok') location.reload(); else alert('失败: '+d.message);
+  });
+}
+
+// ---- CRUD ----
+function triggerTask(id){
+  if(!confirm('确认手动触发任务 #'+id+'?')) return;
+  fetch('/api/tasks/'+id+'/run',{method:'POST'}).then(r=>r.json()).then(d=>{
+    alert(d.status==='ok'?'已触发':'失败: '+d.message); location.reload();
+  });
+}
+function toggleTask(id, enable){
+  fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({is_enabled:enable})}).then(r=>r.json()).then(d=>{
+    if(d.status==='ok') location.reload(); else alert('失败: '+d.message);
+  });
+}
+function deleteTask(id){
+  if(!confirm('确认删除任务 #'+id+'? 关联的执行日志也会删除。')) return;
+  fetch('/api/tasks/'+id,{method:'DELETE'}).then(r=>r.json()).then(d=>{
+    if(d.status==='ok') location.reload(); else alert('失败: '+d.message);
+  });
+}
+function editTask(id, model, type, cron, script, desc){
+  document.getElementById('taskEditId').value = id;
+  document.getElementById('taskModalTitle').textContent = '编辑任务 #'+id;
+  // 等下拉加载完再设值
+  Promise.all([loadModels(), loadScripts()]).then(function(){
+    document.getElementById('taskModel').value = model;
+    document.getElementById('taskType').value = type;
+    document.getElementById('taskCron').value = cron;
+    document.getElementById('taskScript').value = script;
+    document.getElementById('taskDesc').value = desc;
+  });
+  new bootstrap.Modal(document.getElementById('addTaskModal')).show();
+}
+function saveTask(){
+  var id = document.getElementById('taskEditId').value;
+  var model = document.getElementById('taskModel').value;
+  var script = document.getElementById('taskScript').value;
+  if(!model){ alert('请选择模型'); return; }
+  if(!script){ alert('请选择策略脚本'); return; }
+  var data = {
+    model_name: model,
+    task_type: document.getElementById('taskType').value,
+    cron_expr: document.getElementById('taskCron').value,
+    script_path: script,
+    description: document.getElementById('taskDesc').value,
+  };
+  var url = id ? '/api/tasks/'+id : '/api/tasks';
+  var method = id ? 'PUT' : 'POST';
+  fetch(url,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d=>{
+      if(d.status==='ok') location.reload(); else alert('失败: '+d.message);
+    });
+}
+// 新建时清空表单
+document.getElementById('addTaskModal').addEventListener('show.bs.modal', function(e){
+  if(e.relatedTarget){
+    document.getElementById('taskEditId').value='';
+    document.getElementById('taskModalTitle').textContent='新建定时任务';
+    document.getElementById('taskModel').value='';
+    document.getElementById('taskType').value='predict';
+    document.getElementById('taskCron').value='';
+    document.getElementById('taskScript').value='';
+    document.getElementById('taskDesc').value='';
+  }
+});
+</script>
+{% endblock %}

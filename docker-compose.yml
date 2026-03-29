@@ -1,0 +1,26 @@
+services:
+  # ---- 如需容器内 MySQL, 取消注释 ----
+  # db:
+  #   image: mysql:8.0
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: password
+  #     MYSQL_DATABASE: stock_dashboard
+  #   ports:
+  #     - "3306:3306"
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+
+  dashboard:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file: .env            # DATABASE_URL, SECRET_KEY 等
+    environment:
+      - STOCK_DATA_DIR=/data  # 容器内固定路径
+    volumes:
+      - ./data_volume:/data   # 本机挂载: models/ + data/成分/
+    # depends_on:
+    #   - db
+
+# volumes:
+#   mysql_data:
